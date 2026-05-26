@@ -1,53 +1,25 @@
-module digital_lock (
-    input  wire        clk,          // 系統時脈
-    input  wire        rst,          // 非同步重置（高電位有效）
-    input  wire [3:0]  key_in,       // 使用者輸入數字 (0-9)
-    input  wire        key_valid,    // 輸入有效脈衝
-    output reg  [3:0]  seg_digit,    // 當前已輸入位數 (0-4)
-    output reg         led_unlock,   // 解鎖成功指示燈
-    output reg         led_error,    // 輸入錯誤指示燈（維持一拍）
-    output reg         led_locked,   // 系統鎖定指示燈（連續三次錯誤）
-    output reg  [1:0]  error_count   // 當前累計錯誤次數
-);
+# 報告
 
-// ========== 可配置密碼位數 (預設密碼 1-2-3-4) ==========
-parameter DIGIT0 = 4'd1;
-parameter DIGIT1 = 4'd2;
-parameter DIGIT2 = 4'd3;
-parameter DIGIT3 = 4'd4;
+## 程式碼實作邏輯說明
 
-// ========== 有限狀態機 (FSM) 狀態編碼 ==========
-localparam IDLE      = 3'd0; // 等待第 1 位
-localparam INPUT_1   = 3'd1; // 已收第 1 位，等待第 2 位
-localparam INPUT_2   = 3'd2; // 已收第 2 位，等待第 3 位
-localparam INPUT_3   = 3'd3; // 已收第 3 位，等待第 4 位
-localparam CHECK     = 3'd4; // 密碼比對狀態
-localparam UNLOCKED  = 3'd5; // 解鎖成功狀態
-localparam ERROR     = 3'd6; // 密碼錯誤狀態
-localparam LOCKED    = 3'd7; // 系統鎖定狀態
+本設計採用 **三段式有限狀態機 (FSM)** 架構，確保邏輯清晰且易於維護。
 
-// 狀態暫存器
-reg [2:0] state, next_state;
-
-// 儲存輸入數字的暫存器
-reg [3:0] d0, d1, d2, d3;
-
-// ====== 1) 狀態暫存器 (序向邏輯) ======
-// 處理狀態轉換與系統重置
+以下程式功能為時脈上升緣或重置訊號時，更新狀態機的當前狀態的方式。若 `rst` 為高電位，則切換到 `IDLE`；否則切換到下個狀態。
+```verilog
 always @(posedge clk or posedge rst) begin
     if (rst)
         state <= IDLE;
     else
         state <= next_state;
 end
+```
 
-// ====== 2) 次態邏輯 (組合邏輯) ======
-// 根據當前狀態與輸入條件判斷下一個狀態
+以下程式專注於實現狀態切換的邏輯。系統根據當前狀態與輸入信號決定下一個狀態，包含密碼輸入流程、正確與否的判斷，以及鎖定機制的轉換。
+```verilog
 always @(*) begin
-    next_state = state; // 預設保持當前狀態
+    next_state = state;
     case (state)
         IDLE: begin
-            // 收到有效數字且在 0-9 範圍內，進入下一個輸入階段
             if (key_valid && key_in <= 4'd9)
                 next_state = INPUT_1;
             else
@@ -72,34 +44,30 @@ always @(*) begin
                 next_state = INPUT_3;
         end
         CHECK: begin
-            // 比對四位數暫存器與預設密碼是否全等
             if ( (d0 == DIGIT0) && (d1 == DIGIT1) && (d2 == DIGIT2) && (d3 == DIGIT3) )
                 next_state = UNLOCKED;
             else
                 next_state = ERROR;
         end
         ERROR: begin
-            // 判斷錯誤次數是否已達上限 (第 3 次錯誤後鎖定)
-            if (error_count >= 2'd2) 
+            if (error_count >= 2'd2)
                 next_state = LOCKED;
             else
                 next_state = IDLE;
         end
         UNLOCKED: begin
-            // 解鎖後保持在該狀態，直到按下重置
             next_state = UNLOCKED;
         end
         LOCKED: begin
-            // 鎖定後拒絕任何輸入，直到按下重置
             next_state = LOCKED;
-            seg_digit = 4'd0;
         end
         default: next_state = IDLE;
     endcase
 end
+```
 
-// ====== 3) 內部資料儲存與錯誤計數 (序向邏輯) ======
-// 負責存儲输入的密碼與維護錯誤計數器
+以下程式負責處理內部的資料存取與錯誤計數。在不同狀態下接收輸入位數並儲存，或在密碼錯誤時增加計數器。
+```verilog
 always @(posedge clk or posedge rst) begin
     if (rst) begin
         d0 <= 4'd0;
@@ -126,12 +94,10 @@ always @(posedge clk or posedge rst) begin
                     d3 <= key_in;
             end
             CHECK: begin
-                // 如果密碼正確，清除錯誤計數。若錯誤，則由 ERROR 狀態處理遞增。
                 if ( (d0 == DIGIT0) && (d1 == DIGIT1) && (d2 == DIGIT2) && (d3 == DIGIT3) )
                     error_count <= 2'd0;
             end
             ERROR: begin
-                // 進入錯誤狀態時遞增計數器
                 if (error_count < 2'd3)
                     error_count <= error_count + 2'd1;
             end
@@ -139,9 +105,10 @@ always @(posedge clk or posedge rst) begin
         endcase
     end
 end
+```
 
-// ====== 4) 輸出邏輯 (序向邏輯) ======
-// 採用 Moore FSM 風格，根據當前狀態驅動各項輸出指示
+以下程式為輸出控制邏輯。根據當前狀態驅動 7 段顯示器（顯示位數）以及各個 LED 指示燈（解鎖、錯誤、鎖定）。
+```verilog
 always @(posedge clk or posedge rst) begin
     if (rst) begin
         seg_digit    <= 4'd0;
@@ -149,9 +116,8 @@ always @(posedge clk or posedge rst) begin
         led_error    <= 1'b0;
         led_locked   <= 1'b0;
     end else begin
-        // 預設將錯誤燈熄滅，確保它只亮起一拍
         led_error <= 1'b0;
-        
+
         case (state)
             IDLE: begin
                 seg_digit    <= 4'd0;
@@ -183,5 +149,54 @@ always @(posedge clk or posedge rst) begin
         endcase
     end
 end
+```
 
-endmodule
+## 模擬結果分析
+
+根據 `vvp` 執行測試腳本 `tb_digital_lock.v` 的結果，各項測試情境均符合預期：
+
+| 測試情境 | 預期行為 | 模擬結果 | 結論 |
+| :--- | :--- | :--- | :--- |
+| **正確密碼測試** | 輸入 1-2-3-4 後 `led_unlock` 拉高 | `unlock=1`, `digit=4` | **符合** |
+| **中途重置測試** | 輸入一半按下 `rst`，`seg_digit` 歸零 | `After reset: digit=0` | **符合** |
+| **單次錯誤測試** | 輸入 1-2-3-5 後 `led_error` 拉高一拍，`count` 變 1 | `error=1`, `count=1` | **符合** |
+| **三次錯誤鎖定** | 連續三次錯誤後 `led_locked` 拉高 | `locked=1`, `count=3` | **符合** |
+| **鎖定後重置** | 鎖定狀態下 `rst` 可恢復正常輸入 | `SUCCESS: System Unlocked after reset` | **符合** |
+
+## 編譯與模擬輸出結果
+
+以下為執行 `compile.cmd` 的完整終端機輸出：
+
+```text
+VCD info: dumpfile wave.vcd opened for output.
+=== Scenario 1: Correct Password (1-2-3-4) ===
+Time=              185000 | led_unlock=1, led_error=0, led_locked=0, seg_digit= 4
+>>> SUCCESS: System Unlocked
+
+>>> Resetting system...
+=== Scenario 5: Mid-input Reset ===
+Before reset: seg_digit= 2
+After reset:  seg_digit= 0
+>>> SUCCESS: seg_digit reset to 0
+
+=== Scenario 2: Single Error (1-2-3-5) ===
+Time=              450000 | led_unlock=0, led_error=1, led_locked=0, error_count=1
+>>> SUCCESS: error_count incremented to 1
+
+=== Scenario 3: Three Errors Lockout ===
+Entering 2nd wrong password...
+Entering 3rd wrong password...
+Time=              735000 | led_unlock=0, led_error=0, led_locked=1, error_count=3
+>>> SUCCESS: System Locked
+
+=== Scenario 4: Reset after Locked ===
+Trying to enter key while locked (expected ignore)...
+Key ignored as expected
+resetting...
+After reset: led_locked=0, error_count=0, seg_digit= 0
+After reset, entering correct password...
+Time=              945000 | led_unlock=1, led_error=0, led_locked=0, error_count=0
+>>> SUCCESS: System Unlocked after reset
+tb_digital_lock.v:133: $finish called at 1045000 (1ps)
+```
+

@@ -2,7 +2,7 @@
 
 module tb_digital_lock;
 
-// 信號宣告
+// --- 信號宣告 ---
 reg clk;
 reg rst;
 reg [3:0] key_in;
@@ -14,7 +14,7 @@ wire led_error;
 wire led_locked;
 wire [1:0] error_count;
 
-// DUT 實體化
+// --- 待測物 (DUT) 實體化 ---
 digital_lock uut (
     .clk(clk),
     .rst(rst),
@@ -27,11 +27,12 @@ digital_lock uut (
     .error_count(error_count)
 );
 
-// 時脈產生 (100MHz)
+// --- 時脈產生 (100MHz，週期 10ns) ---
 initial clk = 0;
 always #5 clk = ~clk;
 
-// 模擬按鍵輸入的 task
+// --- 模擬按鍵輸入的任務 (Task) ---
+// 模擬按下按鍵後，key_valid 產生一個時脈週期的脈衝
 task press_key;
     input [3:0] digit;
     begin
@@ -40,11 +41,11 @@ task press_key;
         key_valid = 1'b1;
         @(posedge clk);
         key_valid = 1'b0;
-        #20; // 模擬去彈跳間隔
+        #20; // 模擬按鍵去彈跳 (Debounce) 的時間間隔
     end
 endtask
 
-// 輸入四位密碼的 task
+// --- 輸入四位密碼的任務 (Task) ---
 task enter_password;
     input [3:0] d0, d1, d2, d3;
     begin
@@ -55,26 +56,27 @@ task enter_password;
     end
 endtask
 
-// 測試流程
+// --- 測試流程 ---
 initial begin
+    // 開啟波形檔案紀錄
     $dumpfile("wave.vcd");
     $dumpvars(0, tb_digital_lock);
 
-    // 初始狀態
+    // 系統初始化與非同步重置
     rst = 1; key_in = 0; key_valid = 0;
     #25; rst = 0;
     #20;
 
-    // --- 測試 1: 正確密碼測試 (1->2->3->4) ---
-    $display("=== Correct Password (1-2-3-4) ===");
+    // --- 測試情境 1: 正確密碼測試 (1->2->3->4) ---
+    $display("=== Scenario 1: Correct Password (1-2-3-4) ===");
     enter_password(4'd1, 4'd2, 4'd3, 4'd4);
     #20;
-    $display("Time=%t | unlock=%b, error=%b, locked=%b, digit=%d", $time, led_unlock, led_error, led_locked, seg_digit);
+    $display("Time=%t | led_unlock=%b, led_error=%b, led_locked=%b, seg_digit=%d", $time, led_unlock, led_error, led_locked, seg_digit);
     
     if (led_unlock) $display(">>> SUCCESS: System Unlocked");
-    else $display(">>> ERROR: System failed to unlock");
+    else $display(">>> FAILURE: System failed to unlock");
 
-    // --- 測試 5: 中途重置測試 (輸入一半時按 rst) ---
+    // --- 測試情境 5: 中途重置測試 (輸入到一半按 rst) ---
     $display("\n>>> Resetting system...");
     rst = 1; #20; rst = 0; #20;
     $display("=== Scenario 5: Mid-input Reset ===");
@@ -85,50 +87,50 @@ initial begin
     $display("After reset:  seg_digit=%d", seg_digit);
 
     if (seg_digit == 0) $display(">>> SUCCESS: seg_digit reset to 0");
-    else $display(">>> ERROR: seg_digit not reset");
+    else $display(">>> FAILURE: seg_digit not reset");
 
-    // --- 測試 2: 單次錯誤測試 (1->2->3->5) ---
+    // --- 測試情境 2: 單次錯誤測試 (1->2->3->5，最後一位錯誤) ---
     $display("\n=== Scenario 2: Single Error (1-2-3-5) ===");
     enter_password(4'd1, 4'd2, 4'd3, 4'd5);
-    #5;
-    $display("Time=%t | unlock=%b, error=%b, locked=%b, count=%d", $time, led_unlock, led_error, led_locked, error_count);
+    #5; // 稍微等待以捕捉 led_error 的一拍脈衝
+    $display("Time=%t | led_unlock=%b, led_error=%b, led_locked=%b, error_count=%d", $time, led_unlock, led_error, led_locked, error_count);
     if (error_count == 1) $display(">>> SUCCESS: error_count incremented to 1");
-    else $display(">>> ERROR: error_count is %d", error_count);
+    else $display(">>> FAILURE: error_count is %d", error_count);
 
-    // --- 測試 3: 三次錯誤鎖定測試 ---
+    // --- 測試情境 3: 連續三次錯誤鎖定測試 ---
     $display("\n=== Scenario 3: Three Errors Lockout ===");
-    // 目前已經有 1 次錯誤 (1-2-3-5)
-    // 第 2 次錯誤
+    // 目前已有 1 次錯誤 (由測試 2 產生)
+    // 進行第 2 次錯誤輸入
     $display("Entering 2nd wrong password...");
     enter_password(4'd0, 4'd0, 4'd0, 4'd0);
     #20;
-    // 第 3 次錯誤
+    // 進行第 3 次錯誤輸入
     $display("Entering 3rd wrong password...");
     enter_password(4'd9, 4'd9, 4'd9, 4'd9);
     #20;
-    $display("Time=%t | unlock=%b, error=%b, locked=%b, count=%d", $time, led_unlock, led_error, led_locked, error_count);
+    $display("Time=%t | led_unlock=%b, led_error=%b, led_locked=%b, error_count=%d", $time, led_unlock, led_error, led_locked, error_count);
     if (led_locked) $display(">>> SUCCESS: System Locked");
-    else $display(">>> ERROR: System not locked");
+    else $display(">>> FAILURE: System not locked");
 
-    // --- 測試 4: 鎖定後重置測試 ---
+    // --- 測試情境 4: 鎖定後重置測試 ---
     $display("\n=== Scenario 4: Reset after Locked ===");
-    $display("Trying to enter key while locked...");
+    $display("Trying to enter key while locked (expected ignore)...");
     press_key(4'd1);
     if (seg_digit == 0) $display("Key ignored as expected");
     
-    $display("Resetting...");
+    $display("resetting...");
     rst = 1; #20; rst = 0; #20;
-    $display("After reset: locked=%b, count=%d, digit=%d", led_locked, error_count, seg_digit);
+    $display("After reset: led_locked=%b, error_count=%d, seg_digit=%d", led_locked, error_count, seg_digit);
     
-    $display("Entering correct password after reset...");
+    $display("After reset, entering correct password...");
     enter_password(4'd1, 4'd2, 4'd3, 4'd4);
     #20;
-    $display("Time=%t | unlock=%b, error=%b, locked=%b, count=%d", $time, led_unlock, led_error, led_locked, error_count);
+    $display("Time=%t | led_unlock=%b, led_error=%b, led_locked=%b, error_count=%d", $time, led_unlock, led_error, led_locked, error_count);
     if (led_unlock) $display(">>> SUCCESS: System Unlocked after reset");
-    else $display(">>> ERROR: System failed to unlock after reset");
+    else $display(">>> FAILURE: System failed to unlock after reset");
 
     #100;
-    $finish;
+    $finish; // 結束模擬
 end
 
 endmodule
