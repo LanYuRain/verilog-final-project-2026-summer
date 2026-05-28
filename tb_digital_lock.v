@@ -139,9 +139,9 @@ initial begin
     press_key(4'd1);
     
     #205;
-
+    
     #100;
-   // $finish; // 結束模擬
+    $finish; // 結束模擬
 end
 
 endmodule
