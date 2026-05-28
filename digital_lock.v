@@ -16,6 +16,10 @@ parameter DIGIT1 = 4'd2;
 parameter DIGIT2 = 4'd3;
 parameter DIGIT3 = 4'd4;
 
+/*new*/
+//超過此時間回到IDLE(為方便波形測試設成較小的數)
+parameter TIMEOUT_MAX = 32'd20;
+
 // ========== 有限狀態機 (FSM) 狀態編碼 ==========
 localparam IDLE      = 3'd0; // 等待第 1 位
 localparam INPUT_1   = 3'd1; // 已收第 1 位，等待第 2 位
@@ -31,6 +35,10 @@ reg [2:0] state, next_state;
 
 // 儲存輸入數字的暫存器
 reg [3:0] d0, d1, d2, d3;
+
+/*new*/
+//計時器
+reg [31:0] timeout_counter;
 
 // ====== 1) 狀態暫存器 (序向邏輯) ======
 // 處理狀態轉換與系統重置
@@ -56,18 +64,27 @@ always @(*) begin
         INPUT_1: begin
             if (key_valid && key_in <= 4'd9)
                 next_state = INPUT_2;
+            /*new*/
+            else if(timeout_counter >= TIMEOUT_MAX)
+                next_state = IDLE;
             else
                 next_state = INPUT_1;
         end
         INPUT_2: begin
             if (key_valid && key_in <= 4'd9)
                 next_state = INPUT_3;
+            /*new*/
+            else if(timeout_counter >= TIMEOUT_MAX)
+                next_state = IDLE;
             else
                 next_state = INPUT_2;
         end
         INPUT_3: begin
             if (key_valid && key_in <= 4'd9)
                 next_state = CHECK;
+            /*new*/
+            else if(timeout_counter >= TIMEOUT_MAX)
+                next_state = IDLE;
             else
                 next_state = INPUT_3;
         end
@@ -178,9 +195,25 @@ always @(posedge clk or posedge rst) begin
             end
             LOCKED: begin
                 led_locked <= 1'b1;
-                seg_digit = 4'd0;
+                seg_digit <= 4'd0;
             end
         endcase
+    end
+end
+
+/*new*/
+/*timer計時*/
+always @(posedge clk or posedge rst) begin
+    if(rst) begin
+        timeout_counter <= 32'd0;
+    end
+    else begin
+        if(state == IDLE)
+            timeout_counter <= 32'd0;
+        else if(key_valid)
+            timeout_counter <= 32'd0;
+        else
+            timeout_counter <= timeout_counter + 32'd1;
     end
 end
 
