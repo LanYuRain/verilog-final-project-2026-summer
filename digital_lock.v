@@ -18,7 +18,7 @@ parameter DIGIT3 = 4'd4;
 
 /*new*/
 //超過此時間回到IDLE(為方便波形測試設成較小的數)
-parameter TIMEOUT_MAX = 32'd20;
+parameter TIMEOUT_MAX = 5'd20;
 
 // ========== 有限狀態機 (FSM) 狀態編碼 ==========
 localparam IDLE      = 3'd0; // 等待第 1 位
@@ -38,7 +38,7 @@ reg [3:0] d0, d1, d2, d3;
 
 /*new*/
 //計時器
-reg [31:0] timeout_counter;
+reg [4:0] timeout_counter;
 
 // ====== 1) 狀態暫存器 (序向邏輯) ======
 // 處理狀態轉換與系統重置
