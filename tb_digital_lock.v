@@ -7,6 +7,8 @@ reg clk;
 reg rst;
 reg [3:0] key_in;
 reg key_valid;
+/*new*/
+reg key_cancel;
 
 wire [3:0] seg_digit;
 wire led_unlock;
@@ -20,6 +22,8 @@ digital_lock uut (
     .rst(rst),
     .key_in(key_in),
     .key_valid(key_valid),
+    /*new*/
+    .key_cancel(key_cancel),
     .seg_digit(seg_digit),
     .led_unlock(led_unlock),
     .led_error(led_error),
@@ -63,7 +67,7 @@ initial begin
     $dumpvars(0, tb_digital_lock);
 
     // 系統初始化與非同步重置
-    rst = 1; key_in = 0; key_valid = 0;
+    rst = 1; key_in = 0; key_valid = 0; key_cancel = 0;
     #25; rst = 0;
     #20;
 
@@ -130,18 +134,23 @@ initial begin
     else $display(">>> FAILURE: System failed to unlock after reset");*/
 
     /*new*/
-    //--- 測試情境 6: 輸入超時 ---
-    $monitor("Time=%t | seg_digit=%d, led_locked=%b, error_count=%d", $time, seg_digit, led_locked, error_count);
-    $display("\n=== Scenario 6: Timeout ===");
-	 rst = 1; #20; rst = 0; #20;
-    
-    enter_password(4'd1, 4'd2, 4'd3, 4'd5);
-    press_key(4'd1);
+    //--- 測試情境 6: 取消輸入與輸入超時 ---
+    #20
+    $monitor("Time=%t | seg_digit=%d, key_cancel=%b, error_count=%d", $time, seg_digit, key_cancel, error_count);
+    $display("\n=== Scenario 6: Cancel & Timeout ===");
+	
+    press_key(4'd9);
+    #20;
+    key_cancel = 1; #20; key_cancel = 0; #20;
+
+    press_key(4'd8);
+    press_key(4'd7);
+    press_key(4'd6);
     
     #205;
-    
+
     #100;
-    $finish; // 結束模擬
+   // $finish; // 結束模擬
 end
 
 endmodule
