@@ -4,6 +4,7 @@ module digital_lock (
     input  wire [3:0]  key_in,       // 使用者輸入數字 (0-9)
     input  wire        key_valid,    // 輸入有效脈衝
     /*new*/
+    input  wire        key_enter,
     input  wire        key_cancel,   // 高電位取消目前輸入
     output reg  [3:0]  seg_digit,    // 當前已輸入位數 (0-4)
     output reg         led_unlock,   // 解鎖成功指示燈
@@ -96,12 +97,21 @@ always @(*) begin
             else
                 next_state = INPUT_3;
         end
+        
         CHECK: begin
             // 比對四位數暫存器與預設密碼是否全等
-            if ( (d0 == DIGIT0) && (d1 == DIGIT1) && (d2 == DIGIT2) && (d3 == DIGIT3) )
-                next_state = UNLOCKED;
-            else
-                next_state = ERROR;
+            if(key_enter) begin
+                if ( (d0 == DIGIT0) && (d1 == DIGIT1) && (d2 == DIGIT2) && (d3 == DIGIT3) )
+                    next_state = UNLOCKED;
+                else
+                    next_state = ERROR;
+            end
+            else if(key_cancel)
+                next_state = IDLE;
+            else if(timeout_counter >= TIMEOUT_MAX)
+                next_state = IDLE;
+            else 
+                next_state = CHECK;
         end
         ERROR: begin
             // 判斷錯誤次數是否已達上限 (第 3 次錯誤後鎖定)
@@ -152,8 +162,11 @@ always @(posedge clk or posedge rst) begin
             end
             CHECK: begin
                 // 如果密碼正確，清除錯誤計數。若錯誤，則由 ERROR 狀態處理遞增。
-                if ( (d0 == DIGIT0) && (d1 == DIGIT1) && (d2 == DIGIT2) && (d3 == DIGIT3) )
-                    error_count <= 2'd0;
+                if(key_enter)begin
+                    if ( (d0 == DIGIT0) && (d1 == DIGIT1) && (d2 == DIGIT2) && (d3 == DIGIT3) )
+                        error_count <= 2'd0;
+                end
+                
             end
             ERROR: begin
                 // 進入錯誤狀態時遞增計數器
