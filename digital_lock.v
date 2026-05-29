@@ -3,6 +3,8 @@ module digital_lock (
     input  wire        rst,          // 非同步重置（高電位有效）
     input  wire [3:0]  key_in,       // 使用者輸入數字 (0-9)
     input  wire        key_valid,    // 輸入有效脈衝
+    /*new*/
+    input  wire        key_cancel,   // 高電位取消目前輸入
     output reg  [3:0]  seg_digit,    // 當前已輸入位數 (0-4)
     output reg         led_unlock,   // 解鎖成功指示燈
     output reg         led_error,    // 輸入錯誤指示燈（維持一拍）
@@ -16,7 +18,7 @@ parameter DIGIT1 = 4'd2;
 parameter DIGIT2 = 4'd3;
 parameter DIGIT3 = 4'd4;
 
-/*new*/
+
 //超過此時間回到IDLE(為方便波形測試設成較小的數)
 parameter TIMEOUT_MAX = 5'd20;
 
@@ -36,7 +38,7 @@ reg [2:0] state, next_state;
 // 儲存輸入數字的暫存器
 reg [3:0] d0, d1, d2, d3;
 
-/*new*/
+
 //計時器
 reg [4:0] timeout_counter;
 
@@ -65,6 +67,8 @@ always @(*) begin
             if (key_valid && key_in <= 4'd9)
                 next_state = INPUT_2;
             /*new*/
+            else if(key_cancel)
+                next_state = IDLE;
             else if(timeout_counter >= TIMEOUT_MAX)
                 next_state = IDLE;
             else
@@ -74,6 +78,8 @@ always @(*) begin
             if (key_valid && key_in <= 4'd9)
                 next_state = INPUT_3;
             /*new*/
+            else if(key_cancel)
+                next_state = IDLE;
             else if(timeout_counter >= TIMEOUT_MAX)
                 next_state = IDLE;
             else
@@ -83,6 +89,8 @@ always @(*) begin
             if (key_valid && key_in <= 4'd9)
                 next_state = CHECK;
             /*new*/
+            else if(key_cancel)
+                next_state = IDLE;
             else if(timeout_counter >= TIMEOUT_MAX)
                 next_state = IDLE;
             else
@@ -201,19 +209,19 @@ always @(posedge clk or posedge rst) begin
     end
 end
 
-/*new*/
-/*timer計時*/
+
+/*計數*/
 always @(posedge clk or posedge rst) begin
     if(rst) begin
-        timeout_counter <= 32'd0;
+        timeout_counter <= 5'd0;
     end
     else begin
         if(state == IDLE)
-            timeout_counter <= 32'd0;
+            timeout_counter <= 5'd0;
         else if(key_valid)
-            timeout_counter <= 32'd0;
+            timeout_counter <= 5'd0;
         else
-            timeout_counter <= timeout_counter + 32'd1;
+            timeout_counter <= timeout_counter + 5'd1;
     end
 end
 
